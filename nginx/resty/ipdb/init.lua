@@ -3,6 +3,9 @@ local bit = require("bit")
 local cjson = require("cjson")
 local ffi = require("ffi")
 
+-- 兼容 Windows
+local ffi_C = ffi.os == "Windows" and ffi.load("Ws2_32") or ffi.C
+
 local lshift = bit.lshift
 local rshift = bit.rshift
 local band = bit.band
@@ -22,13 +25,13 @@ ffi.cdef [[
 
 local function ip6_to_bin(ip6)
     local binip6 = ffi.new('char [16]')
-    ffi.C.inet_pton(ffi.C.AF_INET6, ip6, binip6);
+    ffi_C.inet_pton(ffi_C.AF_INET6, ip6, binip6);
     return  binip6
 end
 
 local function ip4_to_bin(ip4)
     local binip4 = ffi.new('char [4]')
-    ffi.C.inet_pton(ffi.C.AF_INET, ip4, binip4);
+    ffi_C.inet_pton(ffi_C.AF_INET, ip4, binip4);
     return  binip4
 end
 
@@ -80,18 +83,44 @@ local function read_node(data, node, idx)
     )
 end
 
-local _M = {
-    _VERSION = '0.1'
+local _T = {}
+local _M = { _VERSION = "0.1.1", types = _T }
+local mt = { __index = _M }
+
+_T.MetaInfo = { "//数据库元信息",
+    build       = "number   //构建时间",
+    ip_version  = "number   //IP版本",
+    languages   = { "//语言信息",
+            CN  = "number   //中文信息位置"
+        },
+    node_count  = "number   //节点数量",
+    total_size  = "number   //IP总数量",
+    fields      = "string[] //字段列表",
 }
 
-local mt = {
-    __index = _M
+_T.DBInfo = { "//数据库信息",
+    meta            =  "@MetaInfo   //数据库元信息",
+    data            = "string       //数据库内容",
+    node_count      = "number       //节点数量",
+    node_ipv4_start = "number       //IPV4偏移地址"
 }
 
+_T.IpInfo = { "//IP地址信息",
+    country_name    = "//国家",
+    region_name     = "//省份",
+    city_name       = "//城市",
+}
 
-function _M.new(self, name)
-    local file = fopen(name)
-    assert(file, name .. " db file open failed.")
+-- 加载指定路径的数据库文件
+local function open_db(name)
+-- @name    : string    // 数据库文件
+-- @return  : @DBInfo   // 数据库信息
+
+    local file = fopen(name, "rb")
+    if not file then
+        return nil, name.. " db file open failed."
+    end
+
     local file_size = file:seek("end")
     file:seek("set", 0)
     local data = file:read("*all")
@@ -107,38 +136,66 @@ function _M.new(self, name)
     local meta_buf = str_sub(data, 5, meta_len + 4)
 
     local meta = cjson.decode(meta_buf)
-
-    assert(#meta.fields > 0, "db file content error")
+    if type(meta) ~= "table" or type(meta.fields) ~= "table" or #meta.fields == 0 then
+        return nil, "db file content error"
+    end
 
     local dl = 4 + meta_len + meta.total_size
+    if file_size ~= dl then
+        return nil, "db file content error"
+    end
 
-    assert(file_size == dl, "db file content error")
-
-    return setmetatable({
+    return {
         data = str_sub(data, 5+meta_len, str_len(data)),
         meta = meta,
         node_count = meta["node_count"],
         node_ipv4_start = 0,
-    }, mt)
+    }
+
 end
 
-function _M.find(self, ips, language)
+-- 创建实例
+function _M:new(name)
+-- @@ 这是构造函数
+-- @name    : string    // 数据库文件
 
-    assert(self.meta["languages"][language], "language no support")
+    local db, err = open_db(name)
+    if not db then return nil, err end
 
-    local ip_address = ""
-    local ip_type = 0
+    return setmetatable(db, mt)
+
+end
+
+-- 查找指定语言的IP信息
+function _M:find(ips, language)
+-- @ips         : string    //IP地址
+-- @language    : string    //语言(默认CN)
+-- @return      : @IpInfo   //IP信息
+
+    language = language or "CN"
+
+    local lang_off = self.meta.languages[language]
+
+    if not lang_off then
+        return nil,  "language no support"
+    end
+
+    local ip_address, ip_type
 
     if str_find(ips, ":") then
         ip_address = ip6_to_bin(ips)
         ip_type = 6
 
-        assert(self:ipv6(), "ipv6 no support")
+        if not self:ipv6() then
+            return nil, "ipv6 no support"
+        end
     else
         ip_address = ip4_to_bin(ips)
         ip_type = 4
 
-        assert(self:ipv4(), "ipv4 no support")
+        if not self:ipv4() then
+            return nil, "ipv4 no support"
+        end
     end
 
     local node = 0
@@ -179,11 +236,6 @@ function _M.find(self, ips, language)
     local temp = str_sub(self.data, resolved+3, resolved+2+size)
     local loc  = split(temp, "\t")
 
-    local lang_off = self.meta["languages"][language]
-    if type(lang_off) == "nil" then
-        return nil
-    end
-
     local fields = self.meta["fields"]
     local length = #fields
     local ret = {}
@@ -197,11 +249,13 @@ function _M.find(self, ips, language)
     return ret
 end
 
-function _M.ipv4(self)
+-- 是否支持IPV4
+function _M:ipv4()
     return self.meta.ip_version == 1 or self.meta.ip_version == 3
 end
 
-function _M.ipv6(self)
+-- 是否支持IPV6
+function _M:ipv6()
     return self.meta.ip_version == 2 or self.meta.ip_version == 3
 end
 
