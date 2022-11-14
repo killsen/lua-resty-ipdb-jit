@@ -84,7 +84,7 @@ local function read_node(data, node, idx)
 end
 
 local _T = {}
-local _M = { _VERSION = "0.1.1", types = _T }
+local _M = { _VERSION = "0.1.2", types = _T }
 local mt = { __index = _M }
 
 _T.MetaInfo = { "//数据库元信息",

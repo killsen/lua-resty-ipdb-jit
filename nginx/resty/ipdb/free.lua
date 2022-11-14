@@ -1,7 +1,10 @@
 
-local IPDB = require("resty.ipdb")
+local IPDB              = require "resty.ipdb"
+local lrucache          = require "resty.lrucache"
 
-local __ = { _VERSION = '0.1.1' }
+local __ = { _VERSION = '0.1.2' }
+
+local cache = lrucache.new(1000)
 
 -- 试用版IP地址数据库下载
 -- https://www.ipip.net/download.html
@@ -16,7 +19,7 @@ local function get_free_ipdb()
 
 end
 
-local ipdb, err
+local ipdb, ipdb_err
 
 __.types = IPDB.types
 
@@ -25,18 +28,35 @@ __.find = function (ips, language)
 -- @language    : string    //语言(默认CN)
 -- @return      : @IpInfo   //IP信息
 
-    if err then return nil, err end
+    if ipdb_err then return nil, ipdb_err end
 
     if ipdb == nil then
         local name = get_free_ipdb()
-        ipdb, err = IPDB:new(name)
+        ipdb, ipdb_err = IPDB:new(name)
         if not ipdb then
-            err = err or "unknown error"
-            return nil, err
+            ipdb_err = ipdb_err or "unknown error"
+            return nil, ipdb_err
         end
     end
 
-    return ipdb:find(ips, language)
+    if type(ips) ~= "string" or ips == "" then
+        return nil, "ips is null"
+    end
+
+    if type(language) ~= "string" or language == "" then
+        language = "CN"
+    end
+
+    local key = ips .. ":" .. language
+    local res = cache:get(key)
+    if res then return res end
+
+    local res, err = ipdb:find(ips, language)
+    if not res then return nil, err end
+
+    cache:set(key, res)
+
+    return res
 
 end
 
