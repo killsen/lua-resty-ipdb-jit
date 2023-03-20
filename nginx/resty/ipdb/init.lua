@@ -84,7 +84,7 @@ local function read_node(data, node, idx)
 end
 
 local _T = {}
-local _M = { _VERSION = "0.1.2", types = _T }
+local _M = { _VERSION = "0.1.3", types = _T }
 local mt = { __index = _M }
 
 _T.MetaInfo = { "//数据库元信息",
@@ -169,7 +169,7 @@ end
 -- 查找指定语言的IP信息
 function _M:find(ips, language)
 -- @ips         : string    //IP地址
--- @language    : string    //语言(默认CN)
+-- @language  ? : string    //语言(默认CN)
 -- @return      : @IpInfo   //IP信息
 
     language = language or "CN"
@@ -238,7 +238,7 @@ function _M:find(ips, language)
 
     local fields = self.meta["fields"]
     local length = #fields
-    local ret = {}
+    local ret = {}  --> @IpInfo
     local idx = 1
 
     for  i = lang_off + 1, (lang_off + length) do
@@ -251,11 +251,13 @@ end
 
 -- 是否支持IPV4
 function _M:ipv4()
+-- @return : boolean
     return self.meta.ip_version == 1 or self.meta.ip_version == 3
 end
 
 -- 是否支持IPV6
 function _M:ipv6()
+-- @return : boolean
     return self.meta.ip_version == 2 or self.meta.ip_version == 3
 end
 

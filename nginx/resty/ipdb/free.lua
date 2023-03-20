@@ -2,7 +2,7 @@
 local IPDB              = require "resty.ipdb"
 local lrucache          = require "resty.lrucache"
 
-local __ = { _VERSION = '0.1.2' }
+local __ = { _VERSION = '0.1.3' }
 
 local cache = lrucache.new(1000)
 
@@ -11,6 +11,7 @@ local cache = lrucache.new(1000)
 
 -- 使用同目录下的 free.ipdb
 local function get_free_ipdb()
+-- @return : string
 
     local info = debug.getinfo(1, "S")
     local path = string.sub(info.source, 2)
@@ -25,7 +26,7 @@ __.types = IPDB.types
 
 __.find = function (ips, language)
 -- @ips         : string    //IP地址
--- @language    : string    //语言(默认CN)
+-- @language  ? : string    //语言(默认CN)
 -- @return      : @IpInfo   //IP信息
 
     if ipdb_err then return nil, ipdb_err end
